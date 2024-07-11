@@ -18,25 +18,38 @@ type GitHubUser struct {
 }
 
 type GitHubRepo struct {
-	Name     string `json:"name"`
-	FullName string `json:"full_name"`
-	HtmlUrl  string `json:"html_url"`
+	Name     string     `json:"name"`
+	FullName string     `json:"full_name"`
+	HtmlUrl  string     `json:"html_url"`
+	Owner    GitHubUser `json:"owner"`
+}
+
+type GitHubPullRequest struct {
+	Number int        `json:"number"`
+	Title  string     `json:"title"`
+	User   GitHubUser `json:"user"`
 }
 
 var accessToken string = os.Getenv("GITHUB_TOKEN")
 
 func main() {
-	// repoName := "RandomRepoName123"
+	// repoName := "TestRepo"
 
 	// createRepository(repoName)
 
 	// var user GitHubUser = getUserInfo()
 	// deleteRepository(user.Login, repoName)
 
-	repos := getRepositories()
+	// repos := getRepositories()
 
-	for _, repo := range repos {
-		fmt.Printf("Repo: %+v\n", repo)
+	// for i, repo := range repos {
+	// 	fmt.Printf("Repo %d: %+v\n", i, repo)
+	// }
+
+	pullRequests := getPullRequests("torvalds", "linux", 5)
+
+	for i, pr := range pullRequests {
+		fmt.Printf("PR %d: %+v\n", i, pr)
 	}
 }
 
@@ -68,7 +81,7 @@ func sendRequest(method string, url string, body io.Reader) *http.Response {
 
 func getUserInfo() GitHubUser {
 	var user GitHubUser
-	resp := sendRequest("GET", "https://api.github.com/user", nil)
+	resp := sendRequest(http.MethodGet, "https://api.github.com/user", nil)
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
@@ -89,7 +102,7 @@ func createRepository(name string) {
 	}
 
 	bytesData := bytes.NewBuffer(jsonData)
-	resp := sendRequest("POST", "https://api.github.com/user/repos", bytesData)
+	resp := sendRequest(http.MethodPost, "https://api.github.com/user/repos", bytesData)
 
 	if resp.StatusCode == http.StatusCreated {
 		fmt.Printf("Repo %v created\n", name)
@@ -98,11 +111,12 @@ func createRepository(name string) {
 	}
 }
 
-func deleteRepository(owner string, name string) {
-	resp := sendRequest("DELETE", "https://api.github.com/repos/"+owner+"/"+name, nil)
+func deleteRepository(owner string, repo string) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
+	resp := sendRequest(http.MethodDelete, url, nil)
 
 	if resp.StatusCode == http.StatusNoContent {
-		fmt.Printf("Repo %v deleted\n", name)
+		fmt.Printf("Repo %v deleted\n", repo)
 	} else {
 		fmt.Println(resp.StatusCode)
 	}
@@ -110,7 +124,7 @@ func deleteRepository(owner string, name string) {
 
 func getRepositories() []GitHubRepo {
 	var repos []GitHubRepo
-	resp := sendRequest("GET", "https://api.github.com/user/repos", nil)
+	resp := sendRequest(http.MethodGet, "https://api.github.com/user/repos", nil)
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
@@ -118,4 +132,22 @@ func getRepositories() []GitHubRepo {
 	}
 
 	return repos
+}
+
+func getPullRequests(owner string, repo string, n int) []GitHubPullRequest {
+	return getPullRequestsByState(owner, repo, n, "open")
+}
+
+func getPullRequestsByState(owner string, repo string, n int, state string) []GitHubPullRequest {
+	var pullRequests []GitHubPullRequest
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls?state=%s&per_page=%d", owner, repo, state, n)
+	resp := sendRequest(http.MethodGet, url, nil)
+
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		json.NewDecoder(resp.Body).Decode(&pullRequests)
+	}
+
+	return pullRequests
 }
