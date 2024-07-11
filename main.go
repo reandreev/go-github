@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,10 +29,12 @@ type GitHubPullRequest struct {
 	User   GitHubUser `json:"user"`
 }
 
-var accessToken string = os.Getenv("GITHUB_TOKEN")
+var accessToken string = "" //os.Getenv("GITHUB_TOKEN")
 
 func main() {
 	router := gin.Default()
+
+	router.POST("/auth", authenticate)
 
 	router.GET("/repos", getRepositories)
 	router.GET("/repos/:user", getRepositories)
@@ -44,7 +45,33 @@ func main() {
 	router.Run("localhost:8080")
 }
 
+func authenticate(c *gin.Context) {
+	var data map[string]string
+
+	if err := c.BindJSON(&data); err != nil {
+		log.Fatal(err)
+	}
+
+	accessToken = data["token"]
+
+	resp := sendRequest(http.MethodGet, "https://api.github.com/user", nil)
+
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		var user GitHubUser
+		json.NewDecoder(resp.Body).Decode(&user)
+		c.String(resp.StatusCode, fmt.Sprintf("Authenticated as %s", user.Login))
+	} else {
+		c.String(resp.StatusCode, "Error")
+	}
+}
+
 func getRepositories(c *gin.Context) {
+	if accessToken == "" {
+		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
+		return
+	}
+
 	var repos []GitHubRepo
 	var url string
 
@@ -65,6 +92,11 @@ func getRepositories(c *gin.Context) {
 }
 
 func createRepository(c *gin.Context) {
+	if accessToken == "" {
+		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
+		return
+	}
+
 	var data map[string]string
 	var repo GitHubRepo
 
@@ -89,6 +121,11 @@ func createRepository(c *gin.Context) {
 }
 
 func deleteRepository(c *gin.Context) {
+	if accessToken == "" {
+		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
+		return
+	}
+
 	owner := c.Param("owner")
 	repo := c.Param("repo")
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
@@ -99,6 +136,11 @@ func deleteRepository(c *gin.Context) {
 }
 
 func getPullRequests(c *gin.Context) {
+	if accessToken == "" {
+		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
+		return
+	}
+
 	var pullRequests []GitHubPullRequest
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls?per_page=%s", c.Param("owner"), c.Param("repo"), c.Param("n"))
