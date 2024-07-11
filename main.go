@@ -42,7 +42,7 @@ func main() {
 	router.DELETE("/repos/:owner/:repo", deleteRepository)
 	router.GET("/pulls/:owner/:repo/:n", getPullRequests)
 
-	router.Run("localhost:8080")
+	router.Run(":8080")
 }
 
 func authenticate(c *gin.Context) {
