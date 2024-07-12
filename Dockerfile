@@ -2,7 +2,10 @@ FROM golang:1.22.5
 
 WORKDIR /app
 
-RUN git clone https://github.com/reandreev/go-github.git .
+ADD go.mod ./
+ADD go.sum ./
+ADD main.go ./
+
 RUN go build
 
 EXPOSE 8080
