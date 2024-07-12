@@ -29,49 +29,60 @@ type GitHubPullRequest struct {
 	User   GitHubUser `json:"user"`
 }
 
-var accessToken string = "" //os.Getenv("GITHUB_TOKEN")
+type GitHubToken struct {
+	Token string `json:"token" binding:"required"`
+}
+
+var accessToken GitHubToken
+var authenticatedUser GitHubUser
 
 func main() {
+	router := initRouter()
+	router.Run(":8080")
+}
+
+func initRouter() *gin.Engine {
 	router := gin.Default()
 
 	router.POST("/auth", authenticate)
 
-	router.GET("/repos", getRepositories)
-	router.GET("/repos/:user", getRepositories)
-	router.POST("/repos", createRepository)
-	router.DELETE("/repos/:owner/:repo", deleteRepository)
-	router.GET("/pulls/:owner/:repo/:n", getPullRequests)
+	authenticated := router.Group("/", func(c *gin.Context) {
+		if authenticatedUser.Login == "" {
+			c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "Not authenticated"})
+			c.Abort()
+		} else {
+			c.Next()
+		}
+	})
 
-	router.Run(":8080")
+	authenticated.GET("/repos", getRepositories)
+	authenticated.GET("/repos/:user", getRepositories)
+	authenticated.POST("/repos", createRepository)
+	authenticated.DELETE("/repos/:owner/:repo", deleteRepository)
+	authenticated.GET("/pulls/:owner/:repo/:n", getPullRequests)
+
+	return router
 }
 
 func authenticate(c *gin.Context) {
-	var data map[string]string
-
-	if err := c.BindJSON(&data); err != nil {
-		log.Fatal(err)
+	if err := c.ShouldBindJSON(&accessToken); err != nil {
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "No token provided"})
+		return
 	}
-
-	accessToken = data["token"]
 
 	resp := sendRequest(http.MethodGet, "https://api.github.com/user", nil)
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		var user GitHubUser
-		json.NewDecoder(resp.Body).Decode(&user)
-		c.String(resp.StatusCode, fmt.Sprintf("Authenticated as %s", user.Login))
+		json.NewDecoder(resp.Body).Decode(&authenticatedUser)
+		c.IndentedJSON(resp.StatusCode, gin.H{"user": authenticatedUser.Login})
 	} else {
-		c.String(resp.StatusCode, "Error")
+		accessToken = GitHubToken{}
+		c.IndentedJSON(resp.StatusCode, gin.H{"error": "Invalid token"})
 	}
 }
 
 func getRepositories(c *gin.Context) {
-	if accessToken == "" {
-		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
-		return
-	}
-
 	var repos []GitHubRepo
 	var url string
 
@@ -92,11 +103,6 @@ func getRepositories(c *gin.Context) {
 }
 
 func createRepository(c *gin.Context) {
-	if accessToken == "" {
-		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
-		return
-	}
-
 	var data map[string]string
 	var repo GitHubRepo
 
@@ -121,11 +127,6 @@ func createRepository(c *gin.Context) {
 }
 
 func deleteRepository(c *gin.Context) {
-	if accessToken == "" {
-		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
-		return
-	}
-
 	owner := c.Param("owner")
 	repo := c.Param("repo")
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
@@ -136,11 +137,6 @@ func deleteRepository(c *gin.Context) {
 }
 
 func getPullRequests(c *gin.Context) {
-	if accessToken == "" {
-		c.String(http.StatusUnauthorized, "Authenticate with /auth\n")
-		return
-	}
-
 	var pullRequests []GitHubPullRequest
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls?per_page=%s", c.Param("owner"), c.Param("repo"), c.Param("n"))
@@ -165,7 +161,7 @@ func sendRequest(method string, url string, body io.Reader) *http.Response {
 
 	req.Header = http.Header{
 		"Accept":        {"application/vnd.github+json"},
-		"Authorization": {"Bearer " + accessToken},
+		"Authorization": {"Bearer " + accessToken.Token},
 	}
 
 	resp, err := client.Do(req)
