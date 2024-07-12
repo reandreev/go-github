@@ -78,7 +78,7 @@ func authenticate(c *gin.Context) {
 		c.IndentedJSON(resp.StatusCode, gin.H{"user": authenticatedUser.Login})
 	} else {
 		accessToken = GitHubToken{}
-		c.IndentedJSON(resp.StatusCode, gin.H{"error": "Invalid token"})
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 	}
 }
 
