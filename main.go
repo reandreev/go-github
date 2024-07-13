@@ -41,7 +41,10 @@ var accessToken GitHubToken
 var authenticatedUser GitHubUser
 
 func main() {
-	initRouter(true).Run(":8080")
+	err := initRouter(true).Run(":8080")
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func initRouter(logging bool) *gin.Engine {
@@ -85,7 +88,10 @@ func authenticate(c *gin.Context) {
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		json.NewDecoder(resp.Body).Decode(&authenticatedUser)
+		err := json.NewDecoder(resp.Body).Decode(&authenticatedUser)
+		if err != nil {
+			log.Fatal(err)
+		}
 		c.IndentedJSON(resp.StatusCode, gin.H{"user": authenticatedUser.Login})
 	} else {
 		accessToken = GitHubToken{}
@@ -117,7 +123,10 @@ func getRepositories(c *gin.Context) {
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		json.NewDecoder(resp.Body).Decode(&repos)
+		err := json.NewDecoder(resp.Body).Decode(&repos)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	c.IndentedJSON(resp.StatusCode, repos)
@@ -142,7 +151,10 @@ func createRepository(c *gin.Context) {
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusCreated {
-		json.NewDecoder(resp.Body).Decode(&repo)
+		err := json.NewDecoder(resp.Body).Decode(&repo)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	c.IndentedJSON(resp.StatusCode, repo)
@@ -167,7 +179,10 @@ func getPullRequests(c *gin.Context) {
 
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		json.NewDecoder(resp.Body).Decode(&pullRequests)
+		err := json.NewDecoder(resp.Body).Decode(&pullRequests)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	c.IndentedJSON(resp.StatusCode, pullRequests)
