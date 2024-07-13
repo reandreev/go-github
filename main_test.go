@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var testAccessToken string = os.Getenv("ACCESS_TOKEN")
+
 type APIMessage interface {
 	ToString() string
 }
@@ -125,7 +127,7 @@ func TestAuthenticate(t *testing.T) {
 
 	t.Run("Valid token", func(t *testing.T) {
 		token := map[string]string{
-			"token": os.Getenv("GITHUB_TOKEN"),
+			"token": testAccessToken,
 		}
 
 		response := map[string]string{
@@ -161,7 +163,7 @@ func TestGetRepositories(t *testing.T) {
 	})
 
 	t.Run("Authenticated", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		sendTestRequest(http.StatusOK, nil)
@@ -208,7 +210,7 @@ func TestCreateRepository(t *testing.T) {
 	})
 
 	t.Run("Authenticated: Invalid payload", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		repo := map[string]string{
@@ -222,7 +224,7 @@ func TestCreateRepository(t *testing.T) {
 	})
 
 	t.Run("Authenticated: Valid payload - New repo", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		repo := map[string]string{
@@ -244,7 +246,7 @@ func TestCreateRepository(t *testing.T) {
 	})
 
 	t.Run("Authenticated: Valid payload - Existing repo", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		repo := map[string]string{
@@ -288,7 +290,7 @@ func TestDeleteRepository(t *testing.T) {
 	})
 
 	t.Run("Authenicated: Success", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		sendTestRequest("reandreev", randomRepoName, http.StatusNoContent, nil)
@@ -296,7 +298,7 @@ func TestDeleteRepository(t *testing.T) {
 	})
 
 	t.Run("Authenicated: Nonexistent", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		sendTestRequest("reandreev", randomRepoName, http.StatusNotFound, nil)
@@ -304,7 +306,7 @@ func TestDeleteRepository(t *testing.T) {
 	})
 
 	t.Run("Authenicated: Not authorized", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		sendTestRequest("torvalds", "linux", http.StatusForbidden, nil)
@@ -338,7 +340,7 @@ func TestGetPullRequests(t *testing.T) {
 	})
 
 	t.Run("Authenticated", func(t *testing.T) {
-		accessToken.Token = os.Getenv("GITHUB_TOKEN")
+		accessToken.Token = testAccessToken
 		authenticatedUser.Login = "reandreev"
 
 		sendTestRequest("torvalds", "linux", 5, http.StatusOK, nil)
