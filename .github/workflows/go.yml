@@ -17,3 +17,5 @@ jobs:
     -
       name: Test
       run: go test -v .
+      env:
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
