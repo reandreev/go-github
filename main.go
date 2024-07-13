@@ -33,22 +33,32 @@ type GitHubToken struct {
 	Token string `json:"token" binding:"required"`
 }
 
+type GitHubRepoCreation struct {
+	Name string `json:"name" binding:"required"`
+}
+
 var accessToken GitHubToken
 var authenticatedUser GitHubUser
 
 func main() {
-	router := initRouter()
-	router.Run(":8080")
+	initRouter(true).Run(":8080")
 }
 
-func initRouter() *gin.Engine {
-	router := gin.Default()
+func initRouter(logging bool) *gin.Engine {
+	var router *gin.Engine
+
+	if logging {
+		router = gin.Default()
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+		router = gin.New()
+	}
 
 	router.POST("/auth", authenticate)
 
 	authenticated := router.Group("/", func(c *gin.Context) {
 		if authenticatedUser.Login == "" {
-			c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "Not authenticated"})
+			c.IndentedJSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 			c.Abort()
 		} else {
 			c.Next()
@@ -60,6 +70,7 @@ func initRouter() *gin.Engine {
 	authenticated.POST("/repos", createRepository)
 	authenticated.DELETE("/repos/:owner/:repo", deleteRepository)
 	authenticated.GET("/pulls/:owner/:repo/:n", getPullRequests)
+	authenticated.GET("/logout", logout)
 
 	return router
 }
@@ -80,6 +91,16 @@ func authenticate(c *gin.Context) {
 		accessToken = GitHubToken{}
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 	}
+}
+
+func resetTokenAndUser() {
+	accessToken = GitHubToken{}
+	authenticatedUser = GitHubUser{}
+}
+
+func logout(c *gin.Context) {
+	resetTokenAndUser()
+	c.String(http.StatusOK, "Logged out")
 }
 
 func getRepositories(c *gin.Context) {
@@ -103,11 +124,12 @@ func getRepositories(c *gin.Context) {
 }
 
 func createRepository(c *gin.Context) {
-	var data map[string]string
+	var data GitHubRepoCreation
 	var repo GitHubRepo
 
 	if err := c.BindJSON(&data); err != nil {
-		log.Fatal(err)
+		c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "Missing 'name'"})
+		return
 	}
 
 	jsonData, err := json.Marshal(data)
