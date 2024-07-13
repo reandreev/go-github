@@ -5,6 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
+      GOSECGOVERSION: go1.22.5
     steps:
       -
         name: Checkout Source
