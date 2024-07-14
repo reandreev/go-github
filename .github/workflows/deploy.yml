@@ -7,7 +7,7 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
     secrets:
-      - ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      access: ${{ secrets.ACCESS_TOKEN }}
 
   build:
     uses: ./.github/workflows/build.yml
