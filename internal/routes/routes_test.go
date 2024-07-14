@@ -1,4 +1,4 @@
-package main
+package routes
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func generateRandomRepoName() string {
 
 func TestAuthenticate(t *testing.T) {
 	sendTestRequest := func(data map[string]string, code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 
@@ -98,7 +98,7 @@ func TestAuthenticate(t *testing.T) {
 
 func TestGetRepositories(t *testing.T) {
 	sendTestRequest := func(code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/repos", nil)
@@ -128,7 +128,7 @@ func TestGetRepositories(t *testing.T) {
 
 func TestCreateRepository(t *testing.T) {
 	sendTestRequest := func(data map[string]string, code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 
@@ -212,7 +212,7 @@ func TestCreateRepository(t *testing.T) {
 
 func TestDeleteRepository(t *testing.T) {
 	sendTestRequest := func(owner string, repo string, code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 
@@ -267,7 +267,7 @@ func TestDeleteRepository(t *testing.T) {
 
 func TestGetPullRequests(t *testing.T) {
 	sendTestRequest := func(owner string, repo string, n int, code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 		url := fmt.Sprintf("/pulls/%s/%s/%d", owner, repo, n)
@@ -298,7 +298,7 @@ func TestGetPullRequests(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 	sendTestRequest := func(code int, response APIMessage) {
-		router := initRouter(false)
+		router := InitRouter(false)
 
 		rr := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/logout", nil)
@@ -307,6 +307,8 @@ func TestLogout(t *testing.T) {
 
 		assert.Equal(t, code, rr.Code)
 		assert.Equal(t, response.String(), rr.Body.String())
+		assert.Equal(t, accessToken, GitHubToken{})
+		assert.Equal(t, authenticatedUser, GitHubUser{})
 	}
 
 	t.Run("Unauthenticated", func(t *testing.T) {

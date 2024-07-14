@@ -1,4 +1,4 @@
-package main
+package routes
 
 import (
 	"bytes"
@@ -66,14 +66,7 @@ type GitHubRepoCreation struct {
 var accessToken GitHubToken
 var authenticatedUser GitHubUser
 
-func main() {
-	err := initRouter(true).Run(":8080")
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func initRouter(logging bool) *gin.Engine {
+func InitRouter(logging bool) *gin.Engine {
 	var router *gin.Engine
 
 	if logging {
@@ -87,7 +80,7 @@ func initRouter(logging bool) *gin.Engine {
 
 	authenticated := router.Group("/", func(c *gin.Context) {
 		if authenticatedUser.Login == "" {
-			c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Not authenticated"}) //gin.H{"error": "Not authenticated"})
+			c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Not authenticated"})
 			c.Abort()
 		} else {
 			c.Next()
@@ -106,7 +99,7 @@ func initRouter(logging bool) *gin.Engine {
 
 func authenticate(c *gin.Context) {
 	if err := c.ShouldBindJSON(&accessToken); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "No token provided"}) //gin.H{"error": "No token provided"})
+		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "No token provided"})
 		return
 	}
 
@@ -118,10 +111,10 @@ func authenticate(c *gin.Context) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		c.IndentedJSON(resp.StatusCode, ResponseMessage{"success", "Authenticated as " + authenticatedUser.Login}) //gin.H{"user": authenticatedUser.Login})
+		c.IndentedJSON(resp.StatusCode, ResponseMessage{"success", "Authenticated as " + authenticatedUser.Login})
 	} else {
 		accessToken = GitHubToken{}
-		c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Invalid token"}) //gin.H{"error": "Invalid token"})
+		c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Invalid token"})
 	}
 }
 
@@ -132,8 +125,7 @@ func resetTokenAndUser() {
 
 func logout(c *gin.Context) {
 	resetTokenAndUser()
-	// c.String(http.StatusOK, "Logged out")
-	c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Logged out"}) //gin.H{"message": "Logged out"})
+	c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Logged out"})
 }
 
 func getRepositories(c *gin.Context) {
@@ -164,7 +156,7 @@ func createRepository(c *gin.Context) {
 	var repo GitHubRepo
 
 	if err := c.BindJSON(&data); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "Missing 'name'"}) //gin.H{"error": "Missing 'name'"})
+		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "Missing 'name'"})
 		return
 	}
 
