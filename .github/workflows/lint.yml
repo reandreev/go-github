@@ -1,7 +1,7 @@
 name: lint
 
 on:
-  push:
+  workflow_call:
 
 jobs:
   lint:
