@@ -63,7 +63,7 @@ jobs:
         name: Deploy to minikube
         run: |
           kubectl apply -f kubernetes.yaml
-          kubectl wait --for=condition=ready pod -l app=go-github
+          kubectl wait --for=condition=ready --timeout=120s pod -l app=go-github
       -
         name: Test service URLs
         run: |
