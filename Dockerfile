@@ -2,12 +2,16 @@ FROM golang:1.22.5
 
 WORKDIR /app
 
+RUN mkdir -p bin cmd/go-github internal/routes
+
 ADD go.mod ./
 ADD go.sum ./
-ADD main.go ./
 
-RUN go build
+COPY cmd/go-github ./cmd/go-github
+COPY internal/routes ./internal/routes
+
+RUN go build -o bin ./...
 
 EXPOSE 8080
 
-CMD ["./go-github"]
+CMD ["./bin/go-github"]
