@@ -11,6 +11,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type APIMessage interface {
+	String() string
+}
+
+type ResponseMessage struct {
+	Result  string `json:"result"`
+	Message string `json:"message"`
+}
+
+func String(a any) string {
+	jsonData, err := json.MarshalIndent(a, "", "    ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(jsonData)
+}
+
+func (e ResponseMessage) String() string {
+	return String(e)
+}
+
+func (g GitHubRepo) String() string {
+	return String(g)
+}
+
 type GitHubUser struct {
 	Login   string `json:"login"`
 	HtmlUrl string `json:"html_url"`
@@ -61,7 +87,7 @@ func initRouter(logging bool) *gin.Engine {
 
 	authenticated := router.Group("/", func(c *gin.Context) {
 		if authenticatedUser.Login == "" {
-			c.IndentedJSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Not authenticated"}) //gin.H{"error": "Not authenticated"})
 			c.Abort()
 		} else {
 			c.Next()
@@ -80,7 +106,7 @@ func initRouter(logging bool) *gin.Engine {
 
 func authenticate(c *gin.Context) {
 	if err := c.ShouldBindJSON(&accessToken); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "No token provided"})
+		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "No token provided"}) //gin.H{"error": "No token provided"})
 		return
 	}
 
@@ -92,10 +118,10 @@ func authenticate(c *gin.Context) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		c.IndentedJSON(resp.StatusCode, gin.H{"user": authenticatedUser.Login})
+		c.IndentedJSON(resp.StatusCode, ResponseMessage{"success", "Authenticated as " + authenticatedUser.Login}) //gin.H{"user": authenticatedUser.Login})
 	} else {
 		accessToken = GitHubToken{}
-		c.IndentedJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Invalid token"}) //gin.H{"error": "Invalid token"})
 	}
 }
 
@@ -106,7 +132,8 @@ func resetTokenAndUser() {
 
 func logout(c *gin.Context) {
 	resetTokenAndUser()
-	c.String(http.StatusOK, "Logged out")
+	// c.String(http.StatusOK, "Logged out")
+	c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Logged out"}) //gin.H{"message": "Logged out"})
 }
 
 func getRepositories(c *gin.Context) {
@@ -137,7 +164,7 @@ func createRepository(c *gin.Context) {
 	var repo GitHubRepo
 
 	if err := c.BindJSON(&data); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, gin.H{"error": "Missing 'name'"})
+		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "Missing 'name'"}) //gin.H{"error": "Missing 'name'"})
 		return
 	}
 
@@ -167,7 +194,15 @@ func deleteRepository(c *gin.Context) {
 
 	resp := sendRequest(http.MethodDelete, url, nil)
 
-	c.String(resp.StatusCode, fmt.Sprintln(resp.StatusCode))
+	if resp.StatusCode == http.StatusNoContent {
+		c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Deleted " + repo})
+	} else if resp.StatusCode == http.StatusNotFound {
+		c.IndentedJSON(resp.StatusCode, ResponseMessage{"failure", "Repo not found"})
+	} else if resp.StatusCode == http.StatusForbidden {
+		c.IndentedJSON(resp.StatusCode, ResponseMessage{"failure", "Not authorized"})
+	} else {
+		c.IndentedJSON(resp.StatusCode, ResponseMessage{"redirected", ""})
+	}
 }
 
 func getPullRequests(c *gin.Context) {
