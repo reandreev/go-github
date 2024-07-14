@@ -5,8 +5,6 @@ on:
 
 jobs:
   test:
-    env:
-      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
     uses: ./.github/workflows/test.yml
 
   build:
