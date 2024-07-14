@@ -68,8 +68,7 @@ jobs:
         name: Test service URLs
         run: |
           minikube service list
-          minikube service go-github --url
-          curl http://localhost:8080/auth \
+          curl "$(minikube service go-github --url)/auth" \
           --include \
           --header "Content-Type: application/json" \
           --request "POST" \
