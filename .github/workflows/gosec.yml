@@ -1,5 +1,3 @@
-on:
-  push:
 jobs:
   gosec:
     runs-on: ubuntu-latest

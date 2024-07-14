@@ -1,0 +1,63 @@
+name: deploy
+
+on:
+  push:
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  build:
+    uses: ./.github/workflows/build.yml
+
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  docker:
+    needs:
+      - test
+      - build
+      - lint
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: reandreev/go-github:latest
+
+  minikube:
+    needs:
+      - docker
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+      -
+        name: Start minikube
+        uses: medyagh/setup-minikube@latest
+      -
+        name: Deploy to minikube
+        run: |
+          kubectl apply -f kubernetes.yaml
+          kubectl wait --for=condition=ready pod -l app=go-github
+      -
+        name: Test service URLs
+        run: |
+          minikube service list
+          minikube service go-github --url
+          curl http://localhost:8080/auth \
+          --include \
+          --header "Content-Type: application/json" \
+          --request "POST" \
+          --data "{\"token\": \"$ACCESS_TOKEN\"}"
+        env:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
