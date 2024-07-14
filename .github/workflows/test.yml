@@ -2,6 +2,9 @@ name: test
 
 on:
   workflow_call:
+    secrets:
+      ACCESS_TOKEN:
+        required: true
 
 jobs:
   test:
