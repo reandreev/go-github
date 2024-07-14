@@ -21,9 +21,7 @@ var randomRepoName string = generateRandomRepoName()
 func generateRandomRepoName() string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-	var n int = 10
-
-	b := make([]rune, n)
+	b := make([]rune, 10)
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
