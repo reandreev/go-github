@@ -15,11 +15,15 @@ jobs:
   lint:
     uses: ./.github/workflows/lint.yml
 
+  gosec:
+    uses: ./.github/workflows/gosec.yml
+
   docker:
     needs:
       - test
       - build
       - lint
+      - gosec
     runs-on: ubuntu-latest
     steps:
       -
