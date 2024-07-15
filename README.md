@@ -20,7 +20,7 @@ minikube service go-github --url
 
 ## Authenticating
 
-Use `/auth` with `POST` method providing to authenticate
+Use `/auth` with `POST` method to authenticate
 
 ```
 curl -X POST -d '{"token": "<GITHUB_TOKEN>"}' localhost:8080/auth
