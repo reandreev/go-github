@@ -7,7 +7,7 @@ GitHub REST API in Go
 
 ```
 docker pull reandreev/go-github
-docker run -p 8080:8080 reandreev/go-github -d
+docker run -d -p 8080:8080 reandreev/go-github
 ```
 
 ### Minikube
@@ -57,6 +57,14 @@ Use `/pulls/<user>/<repo>/<n>` with `GET` method to list the `<n>` latest open p
 
 ```
 curl localhost:8080/pulls/torvalds/linux/5
+```
+
+## Logging out
+
+Use `/logout` with `GET` method to logout
+
+```
+curl localhost:8080/logout
 ```
 
 ## TODO  
