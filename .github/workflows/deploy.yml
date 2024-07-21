@@ -61,6 +61,6 @@ jobs:
         name: Test service URLs
         run: |
           minikube service list
-          curl "$(minikube service go-github --url)/auth?token=$ACCESS_TOKEN"
+          curl "$(minikube service go-github --url)/auth?token=$ACCESS_TOKEN" -X POST
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
