@@ -6,8 +6,8 @@ GitHub REST API in Go
 ### Docker
 
 ```
-docker pull reandreev/go-github
-docker run -d -p 8080:8080 reandreev/go-github
+docker pull reandreev/go-github-jwtcookie
+docker run -d -p 8080:8080 reandreev/go-github-jwtcookie
 ```
 
 ### Minikube
@@ -20,10 +20,10 @@ minikube service go-github --url
 
 ## Authenticating
 
-Use `/auth` with `POST` method providing to authenticate
+Use `/auth` with `POST` method to authenticate
 
 ```
-curl -X POST -d '{"token": "<GITHUB_TOKEN>"}' localhost:8080/auth
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/auth?token=<GITHUB_TOKEN>
 ```
 
 ## Listing repositories
@@ -31,8 +31,8 @@ curl -X POST -d '{"token": "<GITHUB_TOKEN>"}' localhost:8080/auth
 Use `/repos` with `GET` method to get a list of your own repos or `/repos/<user>` to get a list of public repos owned by `<user>`
 
 ```
-curl localhost:8080/repos
-curl localhost:8080/repos/torvalds
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/torvalds
 ```
 
 ## Creating repositories
@@ -40,7 +40,7 @@ curl localhost:8080/repos/torvalds
 Use `/repos` with `POST` method to create a new repository
 
 ```
-curl -X POST -d '{"name": "<REPOSITORY_NAME>"}' localhost:8080/repos
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/create?name=<REPO_NAME>
 ```
 
 ## Deleting repositories
@@ -48,7 +48,7 @@ curl -X POST -d '{"name": "<REPOSITORY_NAME>"}' localhost:8080/repos
 Use `/repos/<user>/<repo>` with `DELETE` method to delete a repository
 
 ```
-curl -X DELETE localhost:8080/repos/reandreev/go-github
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/delete/<OWNER>/<REPO>
 ```
 
 ## Listing pull requests
@@ -56,7 +56,7 @@ curl -X DELETE localhost:8080/repos/reandreev/go-github
 Use `/pulls/<user>/<repo>/<n>` with `GET` method to list the `<n>` latest open pull requests in `/<user>/<repo>`
 
 ```
-curl localhost:8080/pulls/torvalds/linux/5
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/pulls/torvalds/linux/5
 ```
 
 ## Logging out
@@ -64,7 +64,7 @@ curl localhost:8080/pulls/torvalds/linux/5
 Use `/logout` with `GET` method to logout
 
 ```
-curl localhost:8080/logout
+curl -c <COOKIE_FILE> -b <COOKIE_FILE>  localhost:8080/logout
 ```
 
 ## TODO  
