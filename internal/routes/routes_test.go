@@ -1,22 +1,21 @@
 package routes
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"os/exec"
 	"testing"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 )
 
 var testAccessToken string = os.Getenv("ACCESS_TOKEN")
 var testAuthenticatedUser = "reandreev"
-
-var randomRepoName string = generateRandomRepoName()
+var testJWT string
 
 func generateRandomRepoName() string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -29,299 +28,324 @@ func generateRandomRepoName() string {
 	return string(b)
 }
 
-func TestAuthenticate(t *testing.T) {
-	sendTestRequest := func(data map[string]string, code int, response APIMessage) {
-		router := InitRouter(false)
-
-		rr := httptest.NewRecorder()
-
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			t.Error(err)
-		}
-
-		bytesData := bytes.NewBuffer(jsonData)
-		req, err := http.NewRequest(http.MethodPost, "/auth", bytesData)
-		if err != nil {
-			t.Error(err)
-		}
-
-		router.ServeHTTP(rr, req)
-
-		assert.Equal(t, code, rr.Code)
-		assert.Equal(t, response.String(), rr.Body.String())
-	}
-
-	t.Run("Missing token field", func(t *testing.T) {
-		data := map[string]string{
-			"tkn": "",
-		}
-
-		response := ResponseMessage{"failure", "No token provided"}
-
-		sendTestRequest(data, http.StatusBadRequest, response)
+func init() {
+	jwToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"token": testAccessToken,
 	})
 
-	t.Run("Empty token field", func(t *testing.T) {
-		data := map[string]string{
-			"token": "",
-		}
+	jwtString, _ := jwToken.SignedString(JWT_SECRET)
+	testJWT = jwtString
+}
 
-		response := ResponseMessage{"failure", "No token provided"}
+func sendTestRequest(t *testing.T, query string, code int, response APIMessage, jwtCookie bool) {
+	router := InitRouter(false)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, query, nil)
 
-		sendTestRequest(data, http.StatusBadRequest, response)
+	if jwtCookie {
+		req.AddCookie(&http.Cookie{
+			Name:     "jwt",
+			Value:    url.QueryEscape(testJWT),
+			MaxAge:   0,
+			Path:     "/",
+			Domain:   "",
+			SameSite: 0,
+			Secure:   false,
+			HttpOnly: true,
+		})
+	}
+
+	router.ServeHTTP(rr, req)
+
+	assert.Equal(t, code, rr.Code)
+	if response != nil {
+		assert.Equal(t, response.String(), rr.Body.String())
+	}
+}
+
+func TestAuthenticate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Missing token parameter I", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
+
+		sendTestRequest(t, "/auth", response.Status, response, false)
+	})
+
+	t.Run("Missing token parameter II", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
+
+		sendTestRequest(t, "/auth?tkn=test", response.Status, response, false)
+	})
+
+	t.Run("Missing token parameter III", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
+
+		sendTestRequest(t, "/auth?token", response.Status, response, false)
+	})
+
+	t.Run("Missing token parameter IV", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
+
+		sendTestRequest(t, "/auth?token=", response.Status, response, false)
 	})
 
 	t.Run("Invalid token", func(t *testing.T) {
-		data := map[string]string{
-			"token": "test",
-		}
+		t.Parallel()
+		response := ResponseMessage{http.StatusUnauthorized, "Invalid token"}
 
-		response := ResponseMessage{"failure", "Invalid token"}
-
-		sendTestRequest(data, http.StatusUnauthorized, response)
+		sendTestRequest(t, "/auth?token=test", response.Status, response, false)
 	})
 
 	t.Run("Valid token", func(t *testing.T) {
-		data := map[string]string{
-			"token": testAccessToken,
-		}
+		t.Parallel()
+		response := ResponseMessage{http.StatusOK, "Authenticated as " + testAuthenticatedUser}
 
-		response := ResponseMessage{"success", "Authenticated as " + testAuthenticatedUser}
-
-		sendTestRequest(data, http.StatusOK, response)
-		resetTokenAndUser()
+		sendTestRequest(t, "/auth?token="+testAccessToken, response.Status, response, false)
 	})
 }
 
 func TestGetRepositories(t *testing.T) {
-	sendTestRequest := func(code int, response APIMessage) {
-		router := InitRouter(false)
+	t.Parallel()
 
-		rr := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/repos", nil)
+	t.Run("Unauthenticated I", func(t *testing.T) {
+		t.Parallel()
 
-		router.ServeHTTP(rr, req)
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		assert.Equal(t, code, rr.Code)
-		if response != nil {
-			assert.Equal(t, response.String(), rr.Body.String())
-		}
-	}
-
-	t.Run("Unauthenticated", func(t *testing.T) {
-		response := ResponseMessage{"failure", "Not authenticated"}
-
-		sendTestRequest(http.StatusUnauthorized, response)
+		sendTestRequest(t, "/repos", response.Status, response, false)
 	})
 
-	t.Run("Authenticated", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Unauthenticated II", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(http.StatusOK, nil)
-		resetTokenAndUser()
+		sendTestRequest(t, "/repos/torvalds", response.Status, response, false)
+	})
+
+	t.Run("Authenticated: Own repos", func(t *testing.T) {
+		t.Parallel()
+
+		sendTestRequest(t, "/repos", http.StatusOK, nil, true)
+	})
+
+	t.Run("Authenticated: Someone's repos", func(t *testing.T) {
+		t.Parallel()
+
+		sendTestRequest(t, "/repos/torvalds", http.StatusOK, nil, true)
+	})
+
+	t.Run("Authenticated: Nonexistent user's repos", func(t *testing.T) {
+		t.Parallel()
+
+		sendTestRequest(t, "/repos/abdnsabduihgdç", http.StatusNotFound, nil, true)
 	})
 }
 
 func TestCreateRepository(t *testing.T) {
-	sendTestRequest := func(data map[string]string, code int, response APIMessage) {
-		router := InitRouter(false)
-
-		rr := httptest.NewRecorder()
-
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			t.Error(err)
-		}
-
-		bytesData := bytes.NewBuffer(jsonData)
-		req, err := http.NewRequest(http.MethodPost, "/repos", bytesData)
-		if err != nil {
-			t.Error(err)
-		}
-
-		router.ServeHTTP(rr, req)
-
-		assert.Equal(t, code, rr.Code)
-		assert.Equal(t, response.String(), rr.Body.String())
-	}
+	t.Parallel()
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		data := map[string]string{
-			"name": "testrepo",
-		}
+		t.Parallel()
 
-		response := ResponseMessage{"failure", "Not authenticated"}
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(data, http.StatusUnauthorized, response)
+		sendTestRequest(t, "/repos/create?name=test", response.Status, response, false)
 	})
 
-	t.Run("Authenticated: Invalid payload", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Missing name parameter I", func(t *testing.T) {
+		t.Parallel()
 
-		data := map[string]string{
-			"nameee": "testrepo",
-		}
+		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		response := ResponseMessage{"failure", "Missing 'name'"}
-
-		sendTestRequest(data, http.StatusBadRequest, response)
-		resetTokenAndUser()
+		sendTestRequest(t, "/repos/create", response.Status, response, true)
 	})
 
-	t.Run("Authenticated: Valid payload - New repo", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Missing name parameter II", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		data := map[string]string{
-			"name": randomRepoName,
-		}
-
-		response := GitHubRepo{
-			randomRepoName,
-			testAuthenticatedUser + "/" + randomRepoName,
-			"https://github.com/" + testAuthenticatedUser + "/" + randomRepoName,
-			GitHubUser{
-				testAuthenticatedUser,
-				"https://github.com/" + testAuthenticatedUser,
-			},
-		}
-
-		sendTestRequest(data, http.StatusCreated, response)
-		resetTokenAndUser()
+		sendTestRequest(t, "/repos/create?nam=", response.Status, response, true)
 	})
 
-	t.Run("Authenticated: Valid payload - Existing repo", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Missing name parameter III", func(t *testing.T) {
+		t.Parallel()
+		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		repo := map[string]string{
-			"name": randomRepoName,
+		sendTestRequest(t, "/repos/create?name=", response.Status, response, true)
+	})
+
+	t.Run("Authenticated - New repo", func(t *testing.T) {
+		t.Parallel()
+
+		repoName := generateRandomRepoName()
+
+		t.Cleanup(func() {
+			cmd := exec.Command(
+				"curl", "-L",
+				"-X", "DELETE",
+				"-H", "Accept: application/vnd.github+json",
+				"-H", "Authorization: Bearer "+testAccessToken,
+				"-H", "X-GitHub-Api-Version: 2022-11-28",
+				"https://api.github.com/repos/"+testAuthenticatedUser+"/"+repoName,
+			)
+
+			if err := cmd.Run(); err != nil {
+				t.Fatal(err)
+			}
+		})
+
+		sendTestRequest(t, "/repos/create?name="+repoName, http.StatusOK, nil, true)
+	})
+
+	t.Run("Authenticated - Already existing repo", func(t *testing.T) {
+		t.Parallel()
+
+		repoName := generateRandomRepoName()
+
+		t.Cleanup(func() {
+			cmd := exec.Command(
+				"curl", "-L",
+				"-X", "DELETE",
+				"-H", "Accept: application/vnd.github+json",
+				"-H", "Authorization: Bearer "+testAccessToken,
+				"-H", "X-GitHub-Api-Version: 2022-11-28",
+				"https://api.github.com/repos/"+testAuthenticatedUser+"/"+repoName,
+			)
+
+			if err := cmd.Run(); err != nil {
+				t.Fatal(err)
+			}
+		})
+
+		cmd := exec.Command(
+			"curl", "-L",
+			"-X", "POST",
+			"-H", "Accept: application/vnd.github+json",
+			"-H", "Authorization: Bearer "+testAccessToken,
+			"-H", "X-GitHub-Api-Version: 2022-11-28",
+			"https://api.github.com/user/repos",
+			"-d", "{\"name\": \""+repoName+"\"}",
+		)
+
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
 		}
 
-		response := GitHubRepo{}
+		response := ResponseMessage{http.StatusUnprocessableEntity, "Repo already exists"}
 
-		sendTestRequest(repo, http.StatusUnprocessableEntity, response)
-		resetTokenAndUser()
+		sendTestRequest(t, "/repos/create?name="+repoName, response.Status, response, true)
 	})
 }
 
 func TestDeleteRepository(t *testing.T) {
-	sendTestRequest := func(owner string, repo string, code int, response APIMessage) {
-		router := InitRouter(false)
-
-		rr := httptest.NewRecorder()
-
-		url := fmt.Sprintf("/repos/%s/%s", owner, repo)
-		req, err := http.NewRequest(http.MethodDelete, url, nil)
-		if err != nil {
-			t.Error(err)
-		}
-
-		router.ServeHTTP(rr, req)
-
-		assert.Equal(t, code, rr.Code)
-		assert.Equal(t, response.String(), rr.Body.String())
-	}
+	t.Parallel()
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		response := ResponseMessage{"failure", "Not authenticated"}
+		t.Parallel()
 
-		sendTestRequest(testAuthenticatedUser, randomRepoName, http.StatusUnauthorized, response)
+		query := "/repos/delete/" + testAuthenticatedUser + "/" + generateRandomRepoName()
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
+
+		sendTestRequest(t, query, response.Status, response, false)
 	})
 
-	t.Run("Authenicated: Success", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Success", func(t *testing.T) {
+		t.Parallel()
 
-		response := ResponseMessage{"success", "Deleted " + randomRepoName}
+		repoName := generateRandomRepoName()
 
-		sendTestRequest(testAuthenticatedUser, randomRepoName, http.StatusOK, response)
-		resetTokenAndUser()
+		cmd := exec.Command(
+			"curl", "-L",
+			"-X", "POST",
+			"-H", "Accept: application/vnd.github+json",
+			"-H", "Authorization: Bearer "+testAccessToken,
+			"-H", "X-GitHub-Api-Version: 2022-11-28",
+			"https://api.github.com/user/repos",
+			"-d", "{\"name\": \""+repoName+"\"}",
+		)
+
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		query := "/repos/delete/" + testAuthenticatedUser + "/" + repoName
+		response := ResponseMessage{http.StatusOK, "Deleted " + repoName}
+
+		sendTestRequest(t, query, response.Status, response, true)
 	})
 
-	t.Run("Authenicated: Nonexistent", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Nonexistent", func(t *testing.T) {
+		t.Parallel()
 
-		response := ResponseMessage{"failure", "Repo not found"}
+		repoName := generateRandomRepoName()
 
-		sendTestRequest(testAuthenticatedUser, randomRepoName, http.StatusNotFound, response)
-		resetTokenAndUser()
+		query := "/repos/delete/" + testAuthenticatedUser + "/" + repoName
+		response := ResponseMessage{http.StatusNotFound, "Repo not found"}
+
+		sendTestRequest(t, query, response.Status, response, true)
 	})
 
-	t.Run("Authenicated: Not authorized", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Not authorized", func(t *testing.T) {
+		t.Parallel()
 
-		response := ResponseMessage{"failure", "Not authorized"}
+		query := "/repos/delete/torvalds/linux"
+		response := ResponseMessage{http.StatusForbidden, "Not authorized"}
 
-		sendTestRequest("torvalds", "linux", http.StatusForbidden, response)
-		resetTokenAndUser()
+		sendTestRequest(t, query, response.Status, response, true)
 	})
 }
 
 func TestGetPullRequests(t *testing.T) {
-	sendTestRequest := func(owner string, repo string, n int, code int, response APIMessage) {
-		router := InitRouter(false)
-
-		rr := httptest.NewRecorder()
-		url := fmt.Sprintf("/pulls/%s/%s/%d", owner, repo, n)
-		req, _ := http.NewRequest(http.MethodGet, url, nil)
-
-		router.ServeHTTP(rr, req)
-
-		assert.Equal(t, code, rr.Code)
-		if response != nil {
-			assert.Equal(t, response.String(), rr.Body.String())
-		}
-	}
+	t.Parallel()
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		response := ResponseMessage{"failure", "Not authenticated"}
+		t.Parallel()
 
-		sendTestRequest("torvalds", "linux", 5, http.StatusUnauthorized, response)
+		query := "/pulls/torvalds/linux/5"
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
+
+		sendTestRequest(t, query, response.Status, response, false)
 	})
 
-	t.Run("Authenticated", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+	t.Run("Authenticated - Success", func(t *testing.T) {
+		t.Parallel()
 
-		sendTestRequest("torvalds", "linux", 5, http.StatusOK, nil)
-		resetTokenAndUser()
+		query := "/pulls/torvalds/linux/5"
+
+		sendTestRequest(t, query, http.StatusOK, nil, true)
+	})
+
+	t.Run("Authenticated - Success", func(t *testing.T) {
+		t.Parallel()
+
+		query := "/pulls/torvalds/linuxx/5"
+		response := ResponseMessage{http.StatusNotFound, "Repo not found"}
+
+		sendTestRequest(t, query, response.Status, response, true)
 	})
 }
 
 func TestLogout(t *testing.T) {
-	sendTestRequest := func(code int, response APIMessage) {
-		router := InitRouter(false)
-
-		rr := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/logout", nil)
-
-		router.ServeHTTP(rr, req)
-
-		assert.Equal(t, code, rr.Code)
-		assert.Equal(t, response.String(), rr.Body.String())
-		assert.Equal(t, accessToken, GitHubToken{})
-		assert.Equal(t, authenticatedUser, GitHubUser{})
-	}
+	t.Parallel()
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		response := ResponseMessage{"failure", "Not authenticated"}
+		t.Parallel()
 
-		sendTestRequest(http.StatusUnauthorized, response)
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
+
+		sendTestRequest(t, "/logout", response.Status, response, false)
 	})
 
 	t.Run("Authenticated", func(t *testing.T) {
-		accessToken.Token = testAccessToken
-		authenticatedUser.Login = testAuthenticatedUser
+		t.Parallel()
 
-		response := ResponseMessage{"success", "Logged out"}
+		response := ResponseMessage{http.StatusOK, "Logged out"}
 
-		sendTestRequest(http.StatusOK, response)
-		resetTokenAndUser()
+		sendTestRequest(t, "/logout", response.Status, response, true)
 	})
 }

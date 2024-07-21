@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt"
 )
 
 type APIMessage interface {
@@ -16,7 +17,7 @@ type APIMessage interface {
 }
 
 type ResponseMessage struct {
-	Result  string `json:"result"`
+	Status  int    `json:"status"`
 	Message string `json:"message"`
 }
 
@@ -55,16 +56,9 @@ type GitHubPullRequest struct {
 	User   GitHubUser `json:"user"`
 }
 
-type GitHubToken struct {
-	Token string `json:"token" binding:"required"`
-}
+const INDENT_JSON bool = true
 
-type GitHubRepoCreation struct {
-	Name string `json:"name" binding:"required"`
-}
-
-var accessToken GitHubToken
-var authenticatedUser GitHubUser
+var JWT_SECRET []byte = []byte("secret_key")
 
 func InitRouter(logging bool) *gin.Engine {
 	var router *gin.Engine
@@ -76,21 +70,35 @@ func InitRouter(logging bool) *gin.Engine {
 		router = gin.New()
 	}
 
-	router.POST("/auth", authenticate)
+	router.GET("/auth", authenticate)
 
 	authenticated := router.Group("/", func(c *gin.Context) {
-		if authenticatedUser.Login == "" {
-			c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Not authenticated"})
+		if cookie, err := c.Cookie("jwt"); err != nil || cookie == "" {
+			sendJSON(c, http.StatusUnauthorized, "Not authenticated", INDENT_JSON)
 			c.Abort()
 		} else {
-			c.Next()
+			token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
+				return JWT_SECRET, nil
+			})
+
+			if err != nil {
+				sendJSON(c, http.StatusUnauthorized, "Bad JWT 1", INDENT_JSON)
+				c.Abort()
+			} else if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+				c.Set("token", claims["token"])
+				c.Set("user", claims["user"])
+				c.Next()
+			} else {
+				sendJSON(c, http.StatusUnauthorized, "Bad JWT 2", INDENT_JSON)
+				c.Abort()
+			}
 		}
 	})
 
 	authenticated.GET("/repos", getRepositories)
 	authenticated.GET("/repos/:user", getRepositories)
-	authenticated.POST("/repos", createRepository)
-	authenticated.DELETE("/repos/:owner/:repo", deleteRepository)
+	authenticated.GET("/repos/create", createRepository)
+	authenticated.GET("/repos/delete/:owner/:repo", deleteRepository)
 	authenticated.GET("/pulls/:owner/:repo/:n", getPullRequests)
 	authenticated.GET("/logout", logout)
 
@@ -98,41 +106,55 @@ func InitRouter(logging bool) *gin.Engine {
 }
 
 func authenticate(c *gin.Context) {
-	if err := c.ShouldBindJSON(&accessToken); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "No token provided"})
+	token := c.Query("token")
+
+	if token == "" {
+		sendJSON(c, http.StatusBadRequest, "No token provided", INDENT_JSON)
 		return
 	}
 
-	resp, err := sendRequest(http.MethodGet, "https://api.github.com/user", nil)
+	resp, err := sendRequest(token, http.MethodGet, "https://api.github.com/user", nil)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
 		return
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNotModified:
+		authenticatedUser := GitHubUser{}
+
 		err := json.NewDecoder(resp.Body).Decode(&authenticatedUser)
 		if err != nil {
-			authenticatedUser = GitHubUser{}
-			c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+			sendJSON(c, http.StatusInternalServerError, "Unable to parse user info", INDENT_JSON)
 			return
 		}
 
-		c.IndentedJSON(resp.StatusCode, ResponseMessage{"success", "Authenticated as " + authenticatedUser.Login})
-	} else {
-		accessToken = GitHubToken{}
-		c.IndentedJSON(http.StatusUnauthorized, ResponseMessage{"failure", "Invalid token"})
+		jwToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"token": token,
+		})
+
+		jwtString, err := jwToken.SignedString(JWT_SECRET)
+		if err != nil {
+			sendJSON(c, http.StatusInternalServerError, "Unable to generate JWT", INDENT_JSON)
+			return
+		}
+
+		c.SetCookie("jwt", jwtString, 300, "/", "", false, true)
+		sendJSON(c, http.StatusOK, "Authenticated as "+authenticatedUser.Login, INDENT_JSON)
+	case http.StatusForbidden:
+		ratelimit(c, resp)
+	case http.StatusUnauthorized:
+		sendJSON(c, resp.StatusCode, "Invalid token", INDENT_JSON)
+	default:
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
 	}
 }
 
-func resetTokenAndUser() {
-	accessToken = GitHubToken{}
-	authenticatedUser = GitHubUser{}
-}
-
 func logout(c *gin.Context) {
-	resetTokenAndUser()
-	c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Logged out"})
+	c.SetCookie("jwt", "", 0, "/", "", false, true)
+	sendJSON(c, http.StatusOK, "Logged out", INDENT_JSON)
 }
 
 func getRepositories(c *gin.Context) {
@@ -145,67 +167,119 @@ func getRepositories(c *gin.Context) {
 		url = "https://api.github.com/user/repos"
 	}
 
-	resp, err := sendRequest(http.MethodGet, url, nil)
+	token := c.MustGet("token").(string)
+
+	defer delete(c.Keys, "token")
+
+	resp, err := sendRequest(token, http.MethodGet, url, nil)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
 		return
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNotModified:
 		err := json.NewDecoder(resp.Body).Decode(&repos)
 		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+			sendJSON(c, http.StatusInternalServerError, "Unable to parse repos info", INDENT_JSON)
 			return
 		}
-	}
 
-	c.IndentedJSON(resp.StatusCode, repos)
+		sendJSON(c, http.StatusOK, "", INDENT_JSON, repos)
+	case http.StatusUnauthorized:
+		sendJSON(c, resp.StatusCode, "Not authenticated", INDENT_JSON)
+	case http.StatusForbidden:
+		ratelimit(c, resp)
+	case http.StatusNotFound:
+		sendJSON(c, resp.StatusCode, "User not found", INDENT_JSON)
+	case http.StatusUnprocessableEntity:
+		sendJSON(c, resp.StatusCode, "Malformed JSON", INDENT_JSON)
+	default:
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
+	}
 }
 
 func createRepository(c *gin.Context) {
-	var data GitHubRepoCreation
-	var repo GitHubRepo
+	name := c.Query("name")
 
-	if err := c.BindJSON(&data); err != nil {
-		c.IndentedJSON(http.StatusBadRequest, ResponseMessage{"failure", "Missing 'name'"})
+	if name == "" {
+		sendJSON(c, http.StatusBadRequest, "Missing name parameter", INDENT_JSON)
 		return
 	}
 
-	jsonData, err := json.Marshal(data)
+	repoCreationPayload := map[string]any{
+		"name": name,
+	}
+
+	for k, v := range c.Request.URL.Query() {
+		if value, err := strconv.ParseInt(v[0], 10, 64); err == nil {
+			repoCreationPayload[k] = value
+		} else if value, err := strconv.ParseBool(v[0]); err == nil {
+			repoCreationPayload[k] = value
+		} else {
+			repoCreationPayload[k] = v[0]
+		}
+	}
+
+	jsonRepoCreationPayload, err := json.Marshal(repoCreationPayload)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error json", INDENT_JSON)
 		return
 	}
 
-	bytesData := bytes.NewBuffer(jsonData)
-	resp, err := sendRequest(http.MethodPost, "https://api.github.com/user/repos", bytesData)
+	token := c.MustGet("token").(string)
+
+	defer delete(c.Keys, "token")
+
+	resp, err := sendRequest(token, http.MethodPost, "https://api.github.com/user/repos", bytes.NewBuffer(jsonRepoCreationPayload))
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
 		return
 	}
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusCreated {
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		var repo map[string]any
 		err := json.NewDecoder(resp.Body).Decode(&repo)
 		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+			sendJSON(c, http.StatusInternalServerError, "Unable to parse repo info", INDENT_JSON)
 			return
 		}
-	}
 
-	c.IndentedJSON(resp.StatusCode, repo)
+		sendJSON(c, http.StatusOK, "", INDENT_JSON, repo)
+	case http.StatusNotModified:
+		sendJSON(c, resp.StatusCode, "Not modified", INDENT_JSON)
+	case http.StatusBadRequest:
+		sendJSON(c, resp.StatusCode, "Bad request", INDENT_JSON)
+	case http.StatusUnauthorized:
+		sendJSON(c, resp.StatusCode, "Not authenticated", INDENT_JSON)
+	case http.StatusForbidden:
+		ratelimit(c, resp)
+	case http.StatusNotFound:
+		sendJSON(c, resp.StatusCode, "Resource not found", INDENT_JSON)
+	case http.StatusUnprocessableEntity:
+		sendJSON(c, resp.StatusCode, "Repo already exists", INDENT_JSON)
+	default:
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
+	}
 }
 
 func deleteRepository(c *gin.Context) {
+	token := c.MustGet("token").(string)
+
 	owner := c.Param("owner")
 	repo := c.Param("repo")
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 
-	resp, err := sendRequest(http.MethodDelete, url, nil)
+	defer delete(c.Keys, "token")
+
+	resp, err := sendRequest(token, http.MethodDelete, url, nil)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
 		return
 	}
 
@@ -213,13 +287,20 @@ func deleteRepository(c *gin.Context) {
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
-		c.IndentedJSON(http.StatusOK, ResponseMessage{"success", "Deleted " + repo})
-	case http.StatusNotFound:
-		c.IndentedJSON(resp.StatusCode, ResponseMessage{"failure", "Repo not found"})
+		sendJSON(c, http.StatusOK, "Deleted "+repo, INDENT_JSON)
+	case http.StatusTemporaryRedirect:
+		sendJSON(c, resp.StatusCode, "Temporary redirect", INDENT_JSON)
 	case http.StatusForbidden:
-		c.IndentedJSON(resp.StatusCode, ResponseMessage{"failure", "Not authorized"})
+		remaining, err := strconv.ParseInt(resp.Header.Get("x-ratelimit-remaining"), 10, 64)
+		if err != nil || remaining > 0 {
+			sendJSON(c, resp.StatusCode, "Not authorized", INDENT_JSON)
+		} else {
+			ratelimit(c, resp)
+		}
+	case http.StatusNotFound:
+		sendJSON(c, resp.StatusCode, "Repo not found", INDENT_JSON)
 	default:
-		c.IndentedJSON(resp.StatusCode, ResponseMessage{"redirected", ""})
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
 	}
 }
 
@@ -233,42 +314,34 @@ func getPullRequests(c *gin.Context) {
 		c.Param("n"),
 	)
 
-	resp, err := sendRequest(http.MethodGet, url, nil)
+	token := c.MustGet("token").(string)
+
+	defer delete(c.Keys, "token")
+
+	resp, err := sendRequest(token, http.MethodGet, url, nil)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
 		return
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
+
+	switch resp.StatusCode {
+	case http.StatusOK:
 		err := json.NewDecoder(resp.Body).Decode(&pullRequests)
 		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, ResponseMessage{"failure", "Unexpected error"})
+			sendJSON(c, http.StatusInternalServerError, "Unable to parse PR info", INDENT_JSON)
 			return
 		}
+
+		sendJSON(c, http.StatusOK, "", INDENT_JSON, pullRequests)
+	case http.StatusNotModified:
+		sendJSON(c, resp.StatusCode, "Not modified", INDENT_JSON)
+	case http.StatusNotFound:
+		sendJSON(c, resp.StatusCode, "Repo not found", INDENT_JSON)
+	case http.StatusUnprocessableEntity:
+		sendJSON(c, resp.StatusCode, "Endpoint spam", INDENT_JSON)
+	default:
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
 	}
-
-	c.IndentedJSON(resp.StatusCode, pullRequests)
-}
-
-func sendRequest(method string, url string, body io.Reader) (*http.Response, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, body)
-
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header = http.Header{
-		"Accept":        {"application/vnd.github+json"},
-		"Authorization": {"Bearer " + accessToken.Token},
-	}
-
-	resp, err := client.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
 }
