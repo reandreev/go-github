@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: reandreev/go-github:latest
+          tags: reandreev/go-github-jwtcookie:latest
 
   minikube:
     needs:
@@ -61,10 +61,6 @@ jobs:
         name: Test service URLs
         run: |
           minikube service list
-          curl "$(minikube service go-github --url)/auth" \
-          --include \
-          --header "Content-Type: application/json" \
-          --request "POST" \
-          --data "{\"token\": \"$ACCESS_TOKEN\"}"
+          curl "$(minikube service go-github --url)/auth?token=$ACCESS_TOKEN"
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}

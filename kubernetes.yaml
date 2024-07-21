@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: go-github
-        image: reandreev/go-github:latest
+        image: reandreev/go-github-jwtcookie:latest
         ports:
         - containerPort: 8080
 ---
