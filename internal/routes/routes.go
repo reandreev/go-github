@@ -70,7 +70,7 @@ func InitRouter(logging bool) *gin.Engine {
 		router = gin.New()
 	}
 
-	router.GET("/auth", authenticate)
+	router.POST("/auth", authenticate)
 
 	authenticated := router.Group("/", func(c *gin.Context) {
 		if cookie, err := c.Cookie("jwt"); err != nil || cookie == "" {
@@ -95,12 +95,16 @@ func InitRouter(logging bool) *gin.Engine {
 		}
 	})
 
+	authenticated.GET("/auth", user)
+	authenticated.DELETE("/auth", logout)
+
 	authenticated.GET("/repos", getRepositories)
 	authenticated.GET("/repos/:user", getRepositories)
-	authenticated.GET("/repos/create", createRepository)
-	authenticated.GET("/repos/delete/:owner/:repo", deleteRepository)
+	authenticated.POST("/repos", createRepository)
+
+	authenticated.DELETE("/repos/:owner/:repo", deleteRepository)
+
 	authenticated.GET("/pulls/:owner/:repo/:n", getPullRequests)
-	authenticated.GET("/logout", logout)
 
 	return router
 }
@@ -143,6 +147,39 @@ func authenticate(c *gin.Context) {
 
 		c.SetCookie("jwt", jwtString, 300, "/", "", false, true)
 		sendJSON(c, http.StatusOK, "Authenticated as "+authenticatedUser.Login, INDENT_JSON)
+	case http.StatusForbidden:
+		ratelimit(c, resp)
+	case http.StatusUnauthorized:
+		sendJSON(c, resp.StatusCode, "Invalid token", INDENT_JSON)
+	default:
+		sendJSON(c, resp.StatusCode, "Unexpected status code", INDENT_JSON)
+	}
+}
+
+func user(c *gin.Context) {
+	token := c.MustGet("token").(string)
+
+	defer delete(c.Keys, "token")
+
+	resp, err := sendRequest(token, http.MethodGet, "https://api.github.com/user", nil)
+	if err != nil {
+		sendJSON(c, http.StatusInternalServerError, "Unexpected error", INDENT_JSON)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNotModified:
+		authenticatedUser := GitHubUser{}
+
+		err := json.NewDecoder(resp.Body).Decode(&authenticatedUser)
+		if err != nil {
+			sendJSON(c, http.StatusInternalServerError, "Unable to parse user info", INDENT_JSON)
+			return
+		}
+
+		sendJSON(c, http.StatusOK, "", INDENT_JSON, authenticatedUser)
 	case http.StatusForbidden:
 		ratelimit(c, resp)
 	case http.StatusUnauthorized:

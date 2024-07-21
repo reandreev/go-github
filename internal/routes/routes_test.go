@@ -37,10 +37,10 @@ func init() {
 	testJWT = jwtString
 }
 
-func sendTestRequest(t *testing.T, query string, code int, response APIMessage, jwtCookie bool) {
+func sendTestRequest(t *testing.T, method string, query string, code int, response APIMessage, jwtCookie bool) {
 	router := InitRouter(false)
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, query, nil)
+	req := httptest.NewRequest(method, query, nil)
 
 	if jwtCookie {
 		req.AddCookie(&http.Cookie{
@@ -68,44 +68,88 @@ func TestAuthenticate(t *testing.T) {
 
 	t.Run("Missing token parameter I", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
 
-		sendTestRequest(t, "/auth", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth", response.Status, response, false)
 	})
 
 	t.Run("Missing token parameter II", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
 
-		sendTestRequest(t, "/auth?tkn=test", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth?tkn=test", response.Status, response, false)
 	})
 
 	t.Run("Missing token parameter III", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
 
-		sendTestRequest(t, "/auth?token", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth?token", response.Status, response, false)
 	})
 
 	t.Run("Missing token parameter IV", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "No token provided"}
 
-		sendTestRequest(t, "/auth?token=", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth?token=", response.Status, response, false)
 	})
 
 	t.Run("Invalid token", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusUnauthorized, "Invalid token"}
 
-		sendTestRequest(t, "/auth?token=test", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth?token=test", response.Status, response, false)
 	})
 
 	t.Run("Valid token", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusOK, "Authenticated as " + testAuthenticatedUser}
 
-		sendTestRequest(t, "/auth?token="+testAccessToken, response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/auth?token="+testAccessToken, response.Status, response, false)
+	})
+}
+
+func TestUser(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
+
+		sendTestRequest(t, http.MethodGet, "/auth", response.Status, response, false)
+	})
+
+	t.Run("Authenticated", func(t *testing.T) {
+		t.Parallel()
+
+		sendTestRequest(t, http.MethodGet, "/auth", http.StatusOK, nil, true)
+	})
+}
+
+func TestLogout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Unauthenticated", func(t *testing.T) {
+		t.Parallel()
+
+		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
+
+		sendTestRequest(t, http.MethodDelete, "/auth", response.Status, response, false)
+	})
+
+	t.Run("Authenticated", func(t *testing.T) {
+		t.Parallel()
+
+		response := ResponseMessage{http.StatusOK, "Logged out"}
+
+		sendTestRequest(t, http.MethodDelete, "/auth", response.Status, response, true)
 	})
 }
 
@@ -117,32 +161,33 @@ func TestGetRepositories(t *testing.T) {
 
 		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(t, "/repos", response.Status, response, false)
+		sendTestRequest(t, http.MethodGet, "/repos", response.Status, response, false)
 	})
 
 	t.Run("Unauthenticated II", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(t, "/repos/torvalds", response.Status, response, false)
+		sendTestRequest(t, http.MethodGet, "/repos/torvalds", response.Status, response, false)
 	})
 
 	t.Run("Authenticated: Own repos", func(t *testing.T) {
 		t.Parallel()
 
-		sendTestRequest(t, "/repos", http.StatusOK, nil, true)
+		sendTestRequest(t, http.MethodGet, "/repos", http.StatusOK, nil, true)
 	})
 
 	t.Run("Authenticated: Someone's repos", func(t *testing.T) {
 		t.Parallel()
 
-		sendTestRequest(t, "/repos/torvalds", http.StatusOK, nil, true)
+		sendTestRequest(t, http.MethodGet, "/repos/torvalds", http.StatusOK, nil, true)
 	})
 
 	t.Run("Authenticated: Nonexistent user's repos", func(t *testing.T) {
 		t.Parallel()
 
-		sendTestRequest(t, "/repos/abdnsabduihgdç", http.StatusNotFound, nil, true)
+		sendTestRequest(t, http.MethodGet, "/repos/abdnsabduihgdç", http.StatusNotFound, nil, true)
 	})
 }
 
@@ -154,7 +199,7 @@ func TestCreateRepository(t *testing.T) {
 
 		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(t, "/repos/create?name=test", response.Status, response, false)
+		sendTestRequest(t, http.MethodPost, "/repos?name=test", response.Status, response, false)
 	})
 
 	t.Run("Authenticated - Missing name parameter I", func(t *testing.T) {
@@ -162,21 +207,23 @@ func TestCreateRepository(t *testing.T) {
 
 		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		sendTestRequest(t, "/repos/create", response.Status, response, true)
+		sendTestRequest(t, http.MethodPost, "/repos", response.Status, response, true)
 	})
 
 	t.Run("Authenticated - Missing name parameter II", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		sendTestRequest(t, "/repos/create?nam=", response.Status, response, true)
+		sendTestRequest(t, http.MethodPost, "/repos?nam=", response.Status, response, true)
 	})
 
 	t.Run("Authenticated - Missing name parameter III", func(t *testing.T) {
 		t.Parallel()
+
 		response := ResponseMessage{http.StatusBadRequest, "Missing name parameter"}
 
-		sendTestRequest(t, "/repos/create?name=", response.Status, response, true)
+		sendTestRequest(t, http.MethodPost, "/repos?name=", response.Status, response, true)
 	})
 
 	t.Run("Authenticated - New repo", func(t *testing.T) {
@@ -199,7 +246,7 @@ func TestCreateRepository(t *testing.T) {
 			}
 		})
 
-		sendTestRequest(t, "/repos/create?name="+repoName, http.StatusOK, nil, true)
+		sendTestRequest(t, http.MethodPost, "/repos?name="+repoName, http.StatusOK, nil, true)
 	})
 
 	t.Run("Authenticated - Already existing repo", func(t *testing.T) {
@@ -238,7 +285,7 @@ func TestCreateRepository(t *testing.T) {
 
 		response := ResponseMessage{http.StatusUnprocessableEntity, "Repo already exists"}
 
-		sendTestRequest(t, "/repos/create?name="+repoName, response.Status, response, true)
+		sendTestRequest(t, http.MethodPost, "/repos?name="+repoName, response.Status, response, true)
 	})
 }
 
@@ -248,10 +295,10 @@ func TestDeleteRepository(t *testing.T) {
 	t.Run("Unauthenticated", func(t *testing.T) {
 		t.Parallel()
 
-		query := "/repos/delete/" + testAuthenticatedUser + "/" + generateRandomRepoName()
+		query := "/repos/" + testAuthenticatedUser + "/" + generateRandomRepoName()
 		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(t, query, response.Status, response, false)
+		sendTestRequest(t, http.MethodDelete, query, response.Status, response, false)
 	})
 
 	t.Run("Authenticated - Success", func(t *testing.T) {
@@ -273,10 +320,10 @@ func TestDeleteRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		query := "/repos/delete/" + testAuthenticatedUser + "/" + repoName
+		query := "/repos/" + testAuthenticatedUser + "/" + repoName
 		response := ResponseMessage{http.StatusOK, "Deleted " + repoName}
 
-		sendTestRequest(t, query, response.Status, response, true)
+		sendTestRequest(t, http.MethodDelete, query, response.Status, response, true)
 	})
 
 	t.Run("Authenticated - Nonexistent", func(t *testing.T) {
@@ -284,19 +331,19 @@ func TestDeleteRepository(t *testing.T) {
 
 		repoName := generateRandomRepoName()
 
-		query := "/repos/delete/" + testAuthenticatedUser + "/" + repoName
+		query := "/repos/" + testAuthenticatedUser + "/" + repoName
 		response := ResponseMessage{http.StatusNotFound, "Repo not found"}
 
-		sendTestRequest(t, query, response.Status, response, true)
+		sendTestRequest(t, http.MethodDelete, query, response.Status, response, true)
 	})
 
 	t.Run("Authenticated - Not authorized", func(t *testing.T) {
 		t.Parallel()
 
-		query := "/repos/delete/torvalds/linux"
+		query := "/repos/torvalds/linux"
 		response := ResponseMessage{http.StatusForbidden, "Not authorized"}
 
-		sendTestRequest(t, query, response.Status, response, true)
+		sendTestRequest(t, http.MethodDelete, query, response.Status, response, true)
 	})
 }
 
@@ -309,7 +356,7 @@ func TestGetPullRequests(t *testing.T) {
 		query := "/pulls/torvalds/linux/5"
 		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
 
-		sendTestRequest(t, query, response.Status, response, false)
+		sendTestRequest(t, http.MethodGet, query, response.Status, response, false)
 	})
 
 	t.Run("Authenticated - Success", func(t *testing.T) {
@@ -317,7 +364,7 @@ func TestGetPullRequests(t *testing.T) {
 
 		query := "/pulls/torvalds/linux/5"
 
-		sendTestRequest(t, query, http.StatusOK, nil, true)
+		sendTestRequest(t, http.MethodGet, query, http.StatusOK, nil, true)
 	})
 
 	t.Run("Authenticated - Success", func(t *testing.T) {
@@ -326,26 +373,6 @@ func TestGetPullRequests(t *testing.T) {
 		query := "/pulls/torvalds/linuxx/5"
 		response := ResponseMessage{http.StatusNotFound, "Repo not found"}
 
-		sendTestRequest(t, query, response.Status, response, true)
-	})
-}
-
-func TestLogout(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Unauthenticated", func(t *testing.T) {
-		t.Parallel()
-
-		response := ResponseMessage{http.StatusUnauthorized, "Not authenticated"}
-
-		sendTestRequest(t, "/logout", response.Status, response, false)
-	})
-
-	t.Run("Authenticated", func(t *testing.T) {
-		t.Parallel()
-
-		response := ResponseMessage{http.StatusOK, "Logged out"}
-
-		sendTestRequest(t, "/logout", response.Status, response, true)
+		sendTestRequest(t, http.MethodGet, query, response.Status, response, true)
 	})
 }
