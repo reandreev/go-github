@@ -23,7 +23,7 @@ minikube service go-github --url
 Use `/auth` with `POST` method to authenticate
 
 ```
-curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/auth?token=<GITHUB_TOKEN>
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/auth?token=<GITHUB_TOKEN> -X POST
 ```
 
 ## Listing repositories
@@ -40,7 +40,7 @@ curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/torvalds
 Use `/repos` with `POST` method to create a new repository
 
 ```
-curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/create?name=<REPO_NAME>
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos?name=<REPO_NAME> -X POST
 ```
 
 ## Deleting repositories
@@ -48,7 +48,7 @@ curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/create?name=<REPO_NA
 Use `/repos/<user>/<repo>` with `DELETE` method to delete a repository
 
 ```
-curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/delete/<OWNER>/<REPO>
+curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/repos/<OWNER>/<REPO> -X DELETE
 ```
 
 ## Listing pull requests
@@ -64,7 +64,7 @@ curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/pulls/torvalds/linux/5
 Use `/logout` with `GET` method to logout
 
 ```
-curl -c <COOKIE_FILE> -b <COOKIE_FILE>  localhost:8080/logout
+curl -c <COOKIE_FILE> -b <COOKIE_FILE>  localhost:8080/auth -X DELETE
 ```
 
 ## TODO  
