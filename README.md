@@ -61,7 +61,7 @@ curl -c <COOKIE_FILE> -b <COOKIE_FILE> localhost:8080/pulls/torvalds/linux/5
 
 ## Logging out
 
-Use `/logout` with `GET` method to logout
+Use `/auth` with `DELETE` method to logout
 
 ```
 curl -c <COOKIE_FILE> -b <COOKIE_FILE>  localhost:8080/auth -X DELETE
